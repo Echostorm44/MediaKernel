@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\Packaging.props" />
+
+  <PropertyGroup>
+    <PackageId>MediaKernel.Codecs</PackageId>
+    <PackageDescription>Codec selection for MediaKernel: the arbiter that picks a decoder for a track, and the interfaces a decoder implements.</PackageDescription>
+
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <LangVersion>preview</LangVersion>
+    
+    <!-- Performance optimizations -->
+    <TieredCompilation>true</TieredCompilation>
+    <TieredPGO>true</TieredPGO>
+    
+    <!-- Assembly info -->
+    <RootNamespace>MediaKernel.Codecs</RootNamespace>
+    <AssemblyName>MediaKernel.Codecs</AssemblyName>
+    <Description>Video and audio codec implementations for MediaKernel</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MediaKernel.Core\MediaKernel.Core.csproj" />
+  </ItemGroup>
+
+</Project>

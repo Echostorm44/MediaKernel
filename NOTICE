@@ -1,0 +1,76 @@
+MediaKernel
+Copyright (c) 2026 Adam M. (Echostorm)
+
+Licensed under the GNU Lesser General Public License, version 2.1 or (at your
+option) any later version. The full text is in LICENSE.
+
+
+WHY THIS LICENCE
+----------------
+
+MediaKernel is a translation, not a reimplementation. Its decoders, demuxers and
+DSP were written by reading FFmpeg's C source function by function and writing
+the equivalent C#, keeping FFmpeg's structures, tables and control flow. A
+translation of a work is a derivative of that work, so MediaKernel is bound by
+the licence of what it was translated from.
+
+FFmpeg's libavcodec and libavformat are licensed LGPL-2.1-or-later, so that is
+MediaKernel's licence too. This is the honest outcome, and it is also the one
+the author wants: the people whose work this is built on chose the LGPL, and
+MediaKernel does not get to choose differently.
+
+In plain terms: you may use MediaKernel in a closed-source application, as long
+as you link it as a library, say that you are using it, and pass on these terms
+and any changes you make to MediaKernel itself.
+
+
+WHOSE WORK THIS IS BUILT ON
+---------------------------
+
+FFmpeg - https://ffmpeg.org/
+    LGPL-2.1-or-later. The overwhelming majority of this project: libavcodec's
+    decoders and DSP, libavformat's demuxers and seeking, libswresample's
+    conversion. Individual source files name the C file they were translated
+    from.
+
+LAME - https://lame.sourceforge.io/
+    LGPL-2.0-or-later. The MP3 encoder under Codecs/MP3/Encoder is a
+    translation of LAME, reached through FFmpeg's libmp3lame wrapper.
+
+VideoLAN / VLC - https://www.videolan.org/
+    Portions of the LGPL-licensed packetizer and NAL-parsing modules were used
+    as a reference alongside the published specifications. Files that cite VLC
+    say so in their header comment.
+
+dav1d - https://code.videolan.org/videolan/dav1d
+    BSD-2-Clause. Used as a reference for the AV1 decoder.
+
+Xiph.Org Foundation - https://xiph.org/
+    BSD-3-Clause. FLAC, Vorbis, Opus and Speex formats and reference behaviour.
+
+The specifications these formats are defined by - ITU-T H.264 and H.265,
+ISO/IEC 13818, 14496 and 23008, ETSI TS 102 114, ATSC A/52, RFC 6716 and others
+- are the normative source for everything here; the implementations above are
+how this project checked its reading of them.
+
+
+WHAT IS NOT IN THIS REPOSITORY
+------------------------------
+
+Some audio and video filters in the author's working tree are translations of
+VLC filter modules, and of code VLC in turn took from MPlayer and the LADSPA
+SWH plugins. Those upstreams are GPL, not LGPL. They are not published here and
+are not in any MediaKernel package, because one GPL-derived file would make the
+whole library GPL. None of them is in the demux-decode-present path.
+
+If you want those filters, they need to ship as a separate GPL-licensed
+package. That has not been done.
+
+
+A NOTE ON PROVENANCE
+--------------------
+
+Every file that was translated from somebody else's code says so at the top,
+and names the file it came from. If you find one that does not, or one whose
+attribution is wrong, please open an issue - that is a bug, and a more serious
+one than a decoding fault.

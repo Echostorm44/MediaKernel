@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\Packaging.props" />
+
+  <PropertyGroup>
+    <PackageId>MediaKernel.Playback</PackageId>
+    <PackageDescription>Playback for MediaKernel: a player that owns the clock, keeps audio and video in step, and hands finished pictures to whatever draws them. The part between a decoder and a window that every application would otherwise write for itself.</PackageDescription>
+
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <LangVersion>preview</LangVersion>
+
+    <RootNamespace>MediaKernel.Playback</RootNamespace>
+    <AssemblyName>MediaKernel.Playback</AssemblyName>
+    <Description>Playback: the clock, the synchronisation and the presentation loop.</Description>
+  </PropertyGroup>
+
+  <!-- Real-time playback needs the optimiser even in a debug build of the host. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MediaKernel.Core\MediaKernel.Core.csproj" />
+  </ItemGroup>
+
+</Project>

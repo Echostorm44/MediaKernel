@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MediaKernel.Core/MediaKernel.Core.csproj" />
+    <Project Path="src/MediaKernel.Codecs/MediaKernel.Codecs.csproj" />
+    <Project Path="src/MediaKernel.Playback/MediaKernel.Playback.csproj" />
+    <Project Path="src/MediaKernel.Generators/MediaKernel.Generators.csproj" />
+  </Folder>
+</Solution>

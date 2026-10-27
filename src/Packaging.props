@@ -1,0 +1,59 @@
+<Project>
+
+  <!--
+    Shared NuGet metadata for the two assemblies that ship: MediaKernel.Core and
+    MediaKernel.Codecs. Imported by each of them, which then sets only its own PackageId and
+    Description.
+
+    WHY A SEPARATE FILE AND NOT Directory.Build.props. A Directory.Build.props here would stop
+    MSBuild walking further up, and the parent directory's Directory.Build.props carries
+    settings this tree
+    already builds with. An explicit import changes nothing else.
+
+    THE VERSION IS THE ONE THING TO EDIT. Alpha numbering, because the packages are consumed by
+    this author's own applications first and the public surface is still moving: a decoder is
+    stable where a gate holds it and nowhere else.
+  -->
+
+  <PropertyGroup>
+    <Version>0.1.0-alpha.1</Version>
+    <Authors>Echostorm</Authors>
+    <Company>Echostorm</Company>
+    <Product>MediaKernel</Product>
+    <Copyright>Copyright (c) 2026 Echostorm</Copyright>
+    <PackageLicenseExpression>LGPL-2.1-or-later</PackageLicenseExpression>
+    <!-- The README and NOTICE live at the root of the PUBLIC tree, which is where packages
+         are built from. In this working tree they are absent, so both are conditional rather
+         than a build error. -->
+    <PackageReadmeFile Condition="Exists('$(MSBuildThisFileDirectory)..\README.md')">README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/Echostorm44/MediaKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Echostorm44/MediaKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>media;video;audio;decoder;demuxer;codec;ffmpeg;managed;aot</PackageTags>
+
+    <!-- A package is built deliberately, by scripts/Pack.ps1, and never as a side effect of a
+         build: a nupkg produced by an ordinary `dotnet build` carries whatever happened to be
+         in the tree at the time. -->
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!-- The XML comments in this tree are most of its documentation; a consumer should see
+         them in IntelliSense. 1591 is "missing XML comment", which is not a packaging
+         concern. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+
+    <!-- Deterministic output, so the same source produces the same package. -->
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\README.md" Pack="true" PackagePath="\"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\README.md')" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)..\NOTICE" Pack="true" PackagePath="\"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\NOTICE')" Visible="false" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,81 @@
+name: release
+
+# Tag a commit and the packages publish themselves:
+#
+#     git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1
+#
+# The tag is the version. Nothing has to be edited in the tree to cut a release, which is the
+# only way a version number cannot disagree with what was shipped.
+#
+# There is no API key anywhere in this repository or in its secrets. nuget.org trusts THIS
+# WORKFLOW FILE in THIS REPOSITORY, verified by a signed token GitHub issues at run time, and
+# hands back a key that lasts an hour. If the trusted publishing policy on nuget.org names
+# `release.yml`, renaming this file breaks publishing until the policy is updated to match.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish, without the leading v (e.g. 0.1.0-alpha.2)'
+        required: true
+
+permissions:
+  contents: write     # create the GitHub release
+  id-token: write     # let GitHub issue the OIDC token nuget.org exchanges for a key
+
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Source Link wants the history to point commits at this repository
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Work out the version
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publishing $version"
+
+      - name: Build
+        run: dotnet build MediaKernel.slnx -c Release --nologo -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Pack
+        run: |
+          dotnet pack src/MediaKernel.Core/MediaKernel.Core.csproj -c Release -o artifacts --nologo --no-build -p:Version=${{ steps.version.outputs.version }}
+          dotnet pack src/MediaKernel.Codecs/MediaKernel.Codecs.csproj -c Release -o artifacts --nologo --no-build -p:Version=${{ steps.version.outputs.version }}
+          dotnet pack src/MediaKernel.Playback/MediaKernel.Playback.csproj -c Release -o artifacts --nologo --no-build -p:Version=${{ steps.version.outputs.version }}
+
+      # Requested here, immediately before the push, because the key lasts one hour.
+      - name: Get a short-lived nuget.org key
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to nuget.org
+        run: >
+          dotnet nuget push artifacts/*.nupkg
+          --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
+
+      - name: GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.nupkg
+          generate_release_notes: true
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}

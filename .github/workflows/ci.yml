@@ -1,0 +1,42 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The point of a managed engine is that it is the same everywhere; this is where that
+        # claim is checked rather than assumed.
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - run: dotnet build MediaKernel.slnx -c Release --nologo
+
+      # Packing in CI catches the packaging faults that a plain build never sees: a missing
+      # dependency, an assembly that does not make it into lib/, a malformed nuspec.
+      - name: Pack
+        if: matrix.os == 'windows-latest'
+        run: |
+          dotnet pack src/MediaKernel.Core/MediaKernel.Core.csproj -c Release -o artifacts --nologo
+          dotnet pack src/MediaKernel.Codecs/MediaKernel.Codecs.csproj -c Release -o artifacts --nologo
+          dotnet pack src/MediaKernel.Playback/MediaKernel.Playback.csproj -c Release -o artifacts --nologo
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-latest'
+        with:
+          name: packages
+          path: artifacts/*.nupkg

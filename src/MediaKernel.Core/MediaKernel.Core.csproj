@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\Packaging.props" />
+
+  <PropertyGroup>
+    <PackageId>MediaKernel.Core</PackageId>
+    <PackageDescription>A pure managed media engine: demuxers for MP4, Matroska, AVI, MPEG program and transport streams, FLV, Ogg, ASF and more, and decoders for H.264, HEVC, VP8, VP9, MPEG-1/2, MPEG-4 Part 2, VC-1, MJPEG, AAC, MP3, AC-3, DTS, FLAC, Opus, Vorbis, WMA and PCM. No native dependencies, AOT-compatible, every codec held against FFmpeg by a gate.</PackageDescription>
+
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <LangVersion>preview</LangVersion>
+    
+    <!-- Performance optimizations -->
+    <TieredCompilation>true</TieredCompilation>
+    <TieredPGO>true</TieredPGO>
+    
+    <!-- Assembly info -->
+    <RootNamespace>MediaKernel.Core</RootNamespace>
+    <AssemblyName>MediaKernel.Core</AssemblyName>
+    <Description>Core media engine for MediaKernel - high-performance video playback</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MediaKernel.Tests" />
+  </ItemGroup>
+
+  <!-- Always optimizethe core library — decoder requires JIT optimizations for real-time playback -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- NO SkiaSharp and NO Microsoft.Data.Sqlite. Both were native dependencies that a
+         decoder has no use for, and both were here because of one file each: SkiaSharp for
+         Video/GpuYuvConverter.cs, a second YUV-to-RGB implementation beside
+         Video/YuvToRgbConverter.cs that nothing ever called, and SQLite for the media
+         library, which is now MediaKernel.Library. Between them they put 11 MB of native
+         code beside every AOT binary built against Core.
+
+         ProtectedData stays: it is the Windows credential API behind
+         Security/CredentialStore.cs, it is managed, and it carries no native payload. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MediaKernel.Generators\MediaKernel.Generators.csproj" 
+                      OutputItemType="Analyzer" 
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
