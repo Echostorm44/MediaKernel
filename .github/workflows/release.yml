@@ -66,12 +66,22 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
 
+      # One push per file rather than a wildcard: the step runs under pwsh, which does not
+      # expand the glob, and dotnet nuget push does not expand it either - it reported
+      # "File does not exist (artifacts/*.nupkg)" and failed the release. Each .nupkg takes
+      # its matching .snupkg with it automatically.
       - name: Push to nuget.org
-        run: >
-          dotnet nuget push artifacts/*.nupkg
-          --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
-          --source https://api.nuget.org/v3/index.json
-          --skip-duplicate
+        run: |
+          $packages = Get-ChildItem artifacts -Filter *.nupkg
+          if ($packages.Count -eq 0) { throw 'No packages to push.' }
+          foreach ($package in $packages) {
+            Write-Host "pushing $($package.Name)"
+            dotnet nuget push $package.FullName `
+              --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} `
+              --source https://api.nuget.org/v3/index.json `
+              --skip-duplicate
+            if ($LASTEXITCODE -ne 0) { throw "push failed for $($package.Name)" }
+          }
 
       - name: GitHub release
         uses: softprops/action-gh-release@v2
