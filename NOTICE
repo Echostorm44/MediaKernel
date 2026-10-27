@@ -71,6 +71,5 @@ A NOTE ON PROVENANCE
 --------------------
 
 Every file that was translated from somebody else's code says so at the top,
-and names the file it came from. If you find one that does not, or one whose
-attribution is wrong, please open an issue - that is a bug, and a more serious
-one than a decoding fault.
+and names the file it came from. An attribution that is missing or wrong is a
+bug, and a more serious one than a decoding fault.
