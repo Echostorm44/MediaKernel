@@ -38,9 +38,9 @@ LAME - https://lame.sourceforge.io/
     translation of LAME, reached through FFmpeg's libmp3lame wrapper.
 
 VideoLAN / VLC - https://www.videolan.org/
-    Portions of the LGPL-licensed packetizer and NAL-parsing modules were used
-    as a reference alongside the published specifications. Files that cite VLC
-    say so in their header comment.
+    Packetizers, NAL parsing, and a number of the audio and video filters.
+    Files that drew on VLC name the module they came from in their header
+    comment.
 
 dav1d - https://code.videolan.org/videolan/dav1d
     BSD-2-Clause. Used as a reference for the AV1 decoder.
@@ -52,19 +52,6 @@ The specifications these formats are defined by - ITU-T H.264 and H.265,
 ISO/IEC 13818, 14496 and 23008, ETSI TS 102 114, ATSC A/52, RFC 6716 and others
 - are the normative source for everything here; the implementations above are
 how this project checked its reading of them.
-
-
-WHAT IS NOT IN THIS REPOSITORY
-------------------------------
-
-Some audio and video filters in the author's working tree are translations of
-VLC filter modules, and of code VLC in turn took from MPlayer and the LADSPA
-SWH plugins. Those upstreams are GPL, not LGPL. They are not published here and
-are not in any MediaKernel package, because one GPL-derived file would make the
-whole library GPL. None of them is in the demux-decode-present path.
-
-If you want those filters, they need to ship as a separate GPL-licensed
-package. That has not been done.
 
 
 A NOTE ON PROVENANCE
