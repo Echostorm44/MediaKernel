@@ -55,6 +55,9 @@ public static class FrameBufferPool<T>
         if (buffer is not null)
             Instance.Return(buffer);
     }
+
+    /// <summary>Lets go of every free buffer. See <see cref="ExactLengthArrayPool{T}.Trim"/>.</summary>
+    public static void Trim() => Instance.Trim();
 }
 
 /// <summary>
@@ -99,6 +102,40 @@ public sealed class ExactLengthArrayPool<T> : ArrayPool<T>
 
     /// <summary>Rents that had to allocate because the free list had nothing of that length.</summary>
     public long Allocations => Interlocked.Read(ref allocations);
+
+    /// <summary>Buffers sitting in the free lists, waiting to be rented again.</summary>
+    public int FreeCount
+    {
+        get
+        {
+            lock (gate)
+            {
+                int count = 0;
+                foreach (var sizeClass in classes)
+                {
+                    if (sizeClass is null)
+                        break;
+                    count += sizeClass.Count;
+                }
+                return count;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lets go of every free buffer and forgets the lengths seen. The pool never trims on its own -
+    /// that is what keeps a running decoder at zero allocations a frame - so this is for the moment
+    /// nothing will rent again soon: the last video closed. A 1080p decoder parks around 90 MB here;
+    /// an application that played one video and went back to photos would otherwise keep it for the
+    /// life of the process. Buffers still rented are untouched and come back as usual.
+    /// </summary>
+    public void Trim()
+    {
+        lock (gate)
+        {
+            Array.Clear(classes);
+        }
+    }
 
     /// <inheritdoc />
     public override T[] Rent(int minimumLength)

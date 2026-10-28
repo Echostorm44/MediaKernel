@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using MediaKernel.Core;
 using MediaKernel.Core.Audio;
+using MediaKernel.Core.Buffers;
 using MediaKernel.Core.Demuxers;
 using MediaKernel.Core.Video;
 
@@ -92,6 +93,13 @@ public sealed class MediaPlayer : IDisposable
     private volatile Engine engine;
     private volatile bool paused;
     private volatile bool ended;
+
+    /// <summary>
+    /// A seek happened while paused: present one picture at the new position, then hold. Set by the
+    /// presenter itself once the new engine is running, so a picture from the replaced one can never
+    /// be taken for it.
+    /// </summary>
+    private volatile bool presentOneWhilePaused;
     private volatile Exception? fault;
     private volatile int displayWidth;
     private volatile int displayHeight;
@@ -99,12 +107,23 @@ public sealed class MediaPlayer : IDisposable
     /// <summary>The position a seek has asked for, waiting for the presenter to carry it out.</summary>
     private long requestedSeekTicks = -1;
 
+    /// <summary>
+    /// Counts seeks. Every published picture carries the generation of the engine that decoded it,
+    /// and the host is never handed one from before the latest seek: between SeekTo and the presenter
+    /// replacing the engine, the old one can still publish, and that picture is from the wrong place.
+    /// </summary>
+    private int seekGeneration;
+
+    /// <summary>The seek generation the running engine was opened for. Presenter only.</summary>
+    private int engineGeneration;
+
     // The published picture: the presenter writes it, the host takes it, and the two never touch
     // the same buffer at the same time because readyLength is zero while one of them owns it.
     private byte[] readyPixels = [];
     private int readyWidth;
     private int readyHeight;
     private long readyPts;
+    private int readyGeneration;
     private bool readyWaiting;
 
     private float volume;
@@ -315,6 +334,7 @@ public sealed class MediaPlayer : IDisposable
             if (output is not null)
                 output.Volume = options.Volume;
 
+            Interlocked.Increment(ref livePlayers);
             engine.Start(player);
             player.presenter.Start();
             return player;
@@ -364,10 +384,14 @@ public sealed class MediaPlayer : IDisposable
             if (!readyWaiting)
                 return false;
 
+            readyWaiting = false;
+
+            // From before the latest seek: the wrong place, and about to be replaced anyway.
+            if (readyGeneration != Volatile.Read(ref seekGeneration))
+                return false;
+
             handler(readyPixels.AsSpan(0, readyWidth * readyHeight * 4),
                     readyWidth, readyHeight, readyPts);
-
-            readyWaiting = false;
         }
 
         return true;
@@ -426,6 +450,8 @@ public sealed class MediaPlayer : IDisposable
         }
         else
         {
+            // Playing on supersedes a scrub picture still on its way.
+            presentOneWhilePaused = false;
             audioOutput?.Resume();
             clock.Resume();
         }
@@ -447,12 +473,15 @@ public sealed class MediaPlayer : IDisposable
 
     /// <summary>
     /// Asks for playback to continue from <paramref name="position"/>. The work happens on the
-    /// presenter thread; this returns at once.
+    /// presenter thread; this returns at once. A paused player stays paused and shows the picture
+    /// at the new position (scrubbing); a playing or finished one plays on from there.
     /// </summary>
     public void SeekTo(TimeSpan position)
     {
         if (position < TimeSpan.Zero)
             position = TimeSpan.Zero;
+
+        bool stayPaused = paused && !ended;
 
         // The clock holds the target and does NOT run until the first picture after the seek
         // arrives to anchor it. Letting it run through the re-open leaves every frame at the new
@@ -462,14 +491,18 @@ public sealed class MediaPlayer : IDisposable
 
         PositionTicks = position.Ticks;
         ended = false;
-        paused = false;
+        paused = stayPaused;
 
+        Interlocked.Increment(ref seekGeneration);
         Interlocked.Exchange(ref requestedSeekTicks, position.Ticks);
     }
 
     /// <inheritdoc/>
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref disposed, 1) == 1)
+            return;
+
         lifetime.Cancel();
 
         if (presenter.IsAlive)
@@ -485,7 +518,22 @@ public sealed class MediaPlayer : IDisposable
         }
 
         lifetime.Dispose();
+
+        // The decoders' frame buffers stay pooled for the next frame, never trimmed while anything
+        // plays. With the last player gone nothing will rent them again soon, and a 1080p file
+        // leaves ~90 MB parked there for the life of the process.
+        if (Interlocked.Decrement(ref livePlayers) == 0)
+        {
+            FrameBufferPool<byte>.Trim();
+            FrameBufferPool<short>.Trim();
+            FrameBufferPool<sbyte>.Trim();
+        }
     }
+
+    /// <summary>Players opened and not yet disposed, across the process.</summary>
+    private static int livePlayers;
+
+    private int disposed;
 
     // ── The presenter thread ─────────────────────────────────────────────
 
@@ -505,14 +553,24 @@ public sealed class MediaPlayer : IDisposable
                     continue;
                 }
 
-                if (paused || !HasVideo)
+                if ((paused && !presentOneWhilePaused) || !HasVideo)
                 {
                     ObserveEnd();
                     Thread.Sleep(10);
                     continue;
                 }
 
-                if (!PresentDueFrame())
+                if (PresentDueFrame())
+                {
+                    if (presentOneWhilePaused && paused)
+                    {
+                        // The picture at the scrubbed-to position is out; the paused clock it
+                        // anchored stops again there.
+                        presentOneWhilePaused = false;
+                        clock.Pause();
+                    }
+                }
+                else
                 {
                     ObserveEnd();
                     Thread.Sleep(2);
@@ -662,6 +720,7 @@ public sealed class MediaPlayer : IDisposable
             readyWidth = width;
             readyHeight = height;
             readyPts = frame.Pts;
+            readyGeneration = engineGeneration;
 
             // A picture the host never took is replaced rather than queued: it is already out of
             // date, and showing it after the one that replaced it would be a step backwards.
@@ -751,6 +810,10 @@ public sealed class MediaPlayer : IDisposable
         ClearReorderBuffer();
         audioOutput?.Flush();
 
+        // Read after the request was taken: a later seek's generation at worst, which only means its
+        // own engine follows on the next pass.
+        engineGeneration = Volatile.Read(ref seekGeneration);
+
         consecutiveDrops = 0;
         framesTaken = 0;
         decodeClock.Reset();
@@ -760,6 +823,14 @@ public sealed class MediaPlayer : IDisposable
         engine = started;
         started.Start(this);
 
+        if (paused)
+        {
+            // Scrubbing while paused: show where it landed, keep the sound stopped.
+            presentOneWhilePaused = true;
+            return;
+        }
+
+        presentOneWhilePaused = false;
         audioOutput?.Resume();
     }
 

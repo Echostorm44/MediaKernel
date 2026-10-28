@@ -83,11 +83,42 @@ internal static class AlacData
     ];
 
     /// <summary>
+    /// <c>ff_alac_channel_elements[ALAC_MAX_CHANNELS][5]</c> - which element type carries each
+    /// part of a stream, by total channel count.
+    /// </summary>
+    /// <remarks>
+    /// Flattened; index as <c>[(channels - 1) * 5 + element]</c>. The decoder never needed this
+    /// table because the bitstream states each element's type as it goes; an encoder has to
+    /// DECIDE them, which is what this is for.
+    /// <para>
+    /// The C leaves the unused tail of each row to zero-initialisation, and
+    /// <see cref="AlacRawDataBlockType.Sce"/> is zero, so the padding reads as single-channel
+    /// elements. That is harmless only because the caller stops at the channel count rather than
+    /// at the row length - the zeros are not a sentinel and must not be treated as one.
+    /// </para>
+    /// </remarks>
+    public static ReadOnlySpan<byte> ChannelElements =>
+    [
+        (byte)AlacRawDataBlockType.Sce, 0, 0, 0, 0,
+        (byte)AlacRawDataBlockType.Cpe, 0, 0, 0, 0,
+        (byte)AlacRawDataBlockType.Sce, (byte)AlacRawDataBlockType.Cpe, 0, 0, 0,
+        (byte)AlacRawDataBlockType.Sce, (byte)AlacRawDataBlockType.Cpe, (byte)AlacRawDataBlockType.Sce, 0, 0,
+        (byte)AlacRawDataBlockType.Sce, (byte)AlacRawDataBlockType.Cpe, (byte)AlacRawDataBlockType.Cpe, 0, 0,
+        (byte)AlacRawDataBlockType.Sce, (byte)AlacRawDataBlockType.Cpe, (byte)AlacRawDataBlockType.Cpe, (byte)AlacRawDataBlockType.Sce, 0,
+        (byte)AlacRawDataBlockType.Sce, (byte)AlacRawDataBlockType.Cpe, (byte)AlacRawDataBlockType.Cpe, (byte)AlacRawDataBlockType.Sce, (byte)AlacRawDataBlockType.Sce,
+        (byte)AlacRawDataBlockType.Sce, (byte)AlacRawDataBlockType.Cpe, (byte)AlacRawDataBlockType.Cpe, (byte)AlacRawDataBlockType.Cpe, (byte)AlacRawDataBlockType.Sce,
+    ];
+
+    /// <summary>
     /// One entry of <see cref="ChannelLayoutOffsets"/>, so a caller that cannot hold a span -
     /// an async test method, for one - can still read the table it is being held to.
     /// </summary>
     public static int Offset(int channels, int element) =>
         ChannelLayoutOffsets[(channels - 1) * 8 + element];
+
+    /// <summary>One entry of <see cref="ChannelElements"/>, for the same reason.</summary>
+    public static AlacRawDataBlockType Element(int channels, int element) =>
+        (AlacRawDataBlockType)ChannelElements[(channels - 1) * 5 + element];
 }
 
 /// <summary><c>ALACContext</c> and the whole of <c>alac.c</c>'s decoder.</summary>
