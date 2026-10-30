@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 
 namespace MediaKernel.Core.Codecs.Audio.Flac;
 
@@ -91,12 +92,19 @@ public sealed class Lpc
     /// later <c>autoc[i]</c> is one element further along; <paramref name="autocOffset"/> carries
     /// that. Returns -1 where the C does, which only happens when <paramref name="fail"/> is set.
     /// </remarks>
-    public static int ComputeLpcCoefs(ReadOnlySpan<double> autoc, int autocOffset, int i,
-                                      int maxOrder, Span<double> lpc, int lpcOffset,
-                                      int lpcStride, bool fail, bool normalize,
-                                      ref double errRef, bool hasErrPtr)
+    /// <remarks>
+    /// Generic over the element type because the C is: <c>lpc_functions.h</c> is included with
+    /// <c>LPC_TYPE</c> set to double by FLAC and left as FLOAT by the AAC encoder's TNS, and
+    /// the two give different filters. The JIT specialises this per type argument, so there is
+    /// one copy of the recursion rather than two that can drift apart.
+    /// </remarks>
+    public static int ComputeLpcCoefs<T>(ReadOnlySpan<T> autoc, int autocOffset, int i,
+                                         int maxOrder, Span<T> lpc, int lpcOffset,
+                                         int lpcStride, bool fail, bool normalize,
+                                         ref T errRef, bool hasErrPtr)
+        where T : IFloatingPointIeee754<T>
     {
-        double err = 0;
+        T err = T.Zero;
         int lpcLast = lpcOffset;
 
         if (normalize)
@@ -112,34 +120,34 @@ public sealed class Lpc
             }
         }
 
-        if (fail && (autoc[autocOffset + maxOrder - 1] == 0 || err <= 0))
+        if (fail && (autoc[autocOffset + maxOrder - 1] == T.Zero || err <= T.Zero))
             return -1;
 
         for (; i < maxOrder; i++)
         {
-            double r = -autoc[autocOffset + i];
+            T r = -autoc[autocOffset + i];
 
             if (normalize)
             {
                 for (int j = 0; j < i; j++)
                     r -= lpc[lpcLast + j] * autoc[autocOffset + i - j - 1];
 
-                if (err != 0)
+                if (err != T.Zero)
                     r /= err;
-                err *= 1.0f - (r * r);
+                err *= T.One - (r * r);
             }
 
             lpc[lpcOffset + i] = r;
 
             for (int j = 0; j < (i + 1) >> 1; j++)
             {
-                double f = lpc[lpcLast + j];
-                double b = lpc[lpcLast + i - 1 - j];
+                T f = lpc[lpcLast + j];
+                T b = lpc[lpcLast + i - 1 - j];
                 lpc[lpcOffset + j] = f + r * b;
                 lpc[lpcOffset + i - 1 - j] = b + r * f;
             }
 
-            if (fail && err < 0)
+            if (fail && err < T.Zero)
                 return -1;
 
             lpcLast = lpcOffset;

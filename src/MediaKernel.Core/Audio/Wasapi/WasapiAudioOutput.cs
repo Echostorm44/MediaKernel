@@ -108,27 +108,12 @@ namespace MediaKernel.Core.Audio.Wasapi
                 // Initialize audio client in shared mode
                 var clientVtable = new AudioClientVtable(audioClient);
                 
-                // Check format support
-                hr = clientVtable.IsFormatSupported(
-                    audioClient,
-                    AudioClientShareMode.Shared,
-                    in waveFormat,
-                    out nint closestMatch);
-                
-                if (hr == WasapiInterop.S_FALSE && closestMatch != 0)
-                {
-                    // Use closest match if our format isn't supported exactly
-                    waveFormat = Marshal.PtrToStructure<WaveFormatExtensible>(closestMatch);
-                    Marshal.FreeCoTaskMem(closestMatch);
-                }
-                else if (hr < 0)
-                {
-                    return false;
-                }
-                
-                // Initialize with target buffer duration
+                // Initialize with target buffer duration. The stream keeps the source's own format:
+                // AutoConvertPcm has Windows resample and remix it to the device's. Adopting the
+                // "closest match" IsFormatSupported offers (the device's mix rate) instead would
+                // play every sample at that rate, so a 24 kHz track ran at double speed.
                 long bufferDuration = WasapiInterop.MillisecondsToRefTime(TargetBufferMilliseconds);
-                
+
                 hr = clientVtable.Initialize(
                     audioClient,
                     AudioClientShareMode.Shared,

@@ -401,6 +401,13 @@ public static class AacTnsDecoder
     /// Port of FFmpeg's ff_tns_tmp2_map[4] from aactab.c.
     /// Index = compress * 2 + res.
     /// </summary>
+    /// <summary>
+    /// <c>ff_tns_tmp2_map</c>, for the encoder: it quantises a reflection coefficient to the
+    /// nearest entry of the same table the decoder dequantises through, and it only ever uses
+    /// the uncompressed pair - index 0 for three-bit coefficients, 1 for four-bit.
+    /// </summary>
+    internal static ReadOnlySpan<float> TnsCoefficientTable(int tableIdx) => GetTnsTable(tableIdx);
+
     private static ReadOnlySpan<float> GetTnsTable(int tableIdx)
     {
         return tableIdx switch

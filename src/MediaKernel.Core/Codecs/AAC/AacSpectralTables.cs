@@ -375,4 +375,28 @@ public static class AacSpectralTables
     };
 
     public static readonly int[] SpectralSizes = { 81, 81, 81, 81, 81, 81, 64, 64, 169, 169, 289 };
+
+    /// <summary>
+    /// <c>ff_aac_spectral_codes</c>: the codewords of spectral codebook 1 to 11.
+    /// </summary>
+    /// <remarks>
+    /// The decoder reads these through the trees it builds once; the encoder needs them by
+    /// index, because it is choosing which index to write rather than recognising one.
+    /// </remarks>
+    public static ReadOnlySpan<ushort> Codes(int codebook) => codebook switch
+    {
+        1 => Codes1, 2 => Codes2, 3 => Codes3, 4 => Codes4, 5 => Codes5, 6 => Codes6,
+        7 => Codes7, 8 => Codes8, 9 => Codes9, 10 => Codes10, 11 => Codes11,
+        _ => throw new ArgumentOutOfRangeException(nameof(codebook), codebook,
+                 "AAC's spectral codebooks are numbered 1 to 11."),
+    };
+
+    /// <summary><c>ff_aac_spectral_bits</c>: the codeword lengths, same indexing.</summary>
+    public static ReadOnlySpan<byte> Bits(int codebook) => codebook switch
+    {
+        1 => Bits1, 2 => Bits2, 3 => Bits3, 4 => Bits4, 5 => Bits5, 6 => Bits6,
+        7 => Bits7, 8 => Bits8, 9 => Bits9, 10 => Bits10, 11 => Bits11,
+        _ => throw new ArgumentOutOfRangeException(nameof(codebook), codebook,
+                 "AAC's spectral codebooks are numbered 1 to 11."),
+    };
 }

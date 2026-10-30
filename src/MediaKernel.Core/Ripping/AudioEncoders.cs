@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using MediaKernel.Core.Codecs.Audio.Alac;
 using MediaKernel.Core.Codecs.Audio.Flac;
 using MediaKernel.Core.Codecs.MP3.Encoder;
 using MediaKernel.Core.Muxers;
@@ -377,6 +378,172 @@ public sealed class FlacEncoder : IAudioEncoder
         s.WriteByte((byte)(value >> 16));
         s.WriteByte((byte)(value >> 8));
         s.WriteByte((byte)value);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        encoder?.Close();
+        return ValueTask.CompletedTask;
+    }
+}
+
+// ============================================================================
+// ALAC Encoder
+// ============================================================================
+
+/// <summary>
+/// Apple Lossless (ALAC) encoder, writing a .m4a.
+/// </summary>
+/// <remarks>
+/// The encoder itself is <see cref="AlacEnc"/>, a translation of FFmpeg's <c>alacenc.c</c> that
+/// the <c>ripping-alac</c> gate holds byte-identical to <c>ffmpeg -c:a alac</c> - 16- and 24-bit,
+/// mono through 5.1, every compression level, including the magic cookie. This class is the thin
+/// part: it splits the caller's interleaved PCM into frames of the encoder's size, converts them
+/// to the planar ints the encoder wants, and hands the packets to <see cref="Mp4AudioWriter"/>,
+/// which is also new - an .m4a had nowhere to go before, which is why
+/// <see cref="AudioEncoderFactory.Create"/> threw for <see cref="AudioFormat.Alac"/>.
+/// </remarks>
+public sealed class AlacEncoder : IAudioEncoder
+{
+    private AlacEnc? encoder;
+    private Mp4AudioWriter? writer;
+    private AudioEncoderSettings settings = new();
+
+    // Interleaved input, buffered until a whole frame's worth is available.
+    private byte[]? pending;
+    private int pendingBytes;
+    private int[][]? planes;
+
+    private bool initialized;
+    private bool finalized;
+
+    public string Name => "ALAC";
+    public string Extension => "m4a";
+    public bool IsLossless => true;
+
+    public async Task InitializeAsync(Stream output, AudioEncoderSettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        if (settings.BitsPerSample != 16 && settings.BitsPerSample != 24)
+        {
+            // ffmpeg's own encoder takes s16p or s32p and codes 16 or 24 bits; there is no
+            // 20- or 32-bit arm to mirror.
+            throw new NotSupportedException(
+                $"ALAC input must be 16- or 24-bit; got {settings.BitsPerSample}.");
+        }
+        if (settings.Channels is < 1 or > 8)
+        {
+            throw new NotSupportedException(
+                $"ALAC carries 1 to 8 channels; got {settings.Channels}.");
+        }
+
+        this.settings = settings;
+
+        encoder = new AlacEnc(settings.Channels, settings.SampleRate,
+                              is32BitInput: settings.BitsPerSample == 24,
+                              new AlacEncoderOptions());
+
+        writer = new Mp4AudioWriter(output, new Mp4AudioTrack
+        {
+            SampleEntryType = "alac",
+            CodecConfiguration = encoder.Extradata,
+            SampleRate = settings.SampleRate,
+            Channels = settings.Channels,
+            Tags = ToMp4Tags(settings.Metadata),
+        });
+        await writer.StartAsync(cancellationToken);
+
+        int bytesPerFrame = settings.Channels * (settings.BitsPerSample / 8);
+        pending = new byte[encoder.FrameSize * bytesPerFrame];
+        pendingBytes = 0;
+        planes = new int[settings.Channels][];
+        for (int ch = 0; ch < settings.Channels; ch++)
+            planes[ch] = new int[encoder.FrameSize];
+
+        initialized = true;
+    }
+
+    private static Mp4AudioTags? ToMp4Tags(AudioMetadata? meta) => meta == null ? null : new Mp4AudioTags
+    {
+        Title = meta.Title,
+        Artist = meta.Artist,
+        Album = meta.Album,
+        AlbumArtist = meta.AlbumArtist,
+        Composer = meta.Composer,
+        Genre = meta.Genre,
+        Comment = meta.Comment,
+        Year = meta.Year,
+        TrackNumber = meta.TrackNumber,
+        TrackCount = meta.TrackCount,
+        DiscNumber = meta.DiscNumber,
+        DiscCount = meta.DiscCount,
+        CoverArt = meta.CoverArt,
+        CoverArtMimeType = meta.CoverArtMimeType,
+    };
+
+    public async Task EncodeSamplesAsync(ReadOnlyMemory<byte> samples,
+        CancellationToken cancellationToken = default)
+    {
+        if (!initialized || finalized || encoder == null || pending == null)
+            throw new InvalidOperationException("The ALAC encoder is not initialised.");
+
+        int offset = 0;
+        while (offset < samples.Length)
+        {
+            int toCopy = Math.Min(samples.Length - offset, pending.Length - pendingBytes);
+            samples.Slice(offset, toCopy).CopyTo(pending.AsMemory(pendingBytes));
+            pendingBytes += toCopy;
+            offset += toCopy;
+
+            if (pendingBytes == pending.Length)
+            {
+                await EncodeBufferedAsync(encoder.FrameSize, cancellationToken);
+                pendingBytes = 0;
+            }
+        }
+    }
+
+    /// <summary>Encodes the first <paramref name="sampleCount"/> frames of the pending buffer.</summary>
+    private async Task EncodeBufferedAsync(int sampleCount, CancellationToken cancellationToken)
+    {
+        int channels = settings.Channels;
+        int bytesPerSample = settings.BitsPerSample / 8;
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            int at = i * channels * bytesPerSample;
+            for (int ch = 0; ch < channels; ch++)
+            {
+                int p = at + ch * bytesPerSample;
+                // 24-bit samples reach the encoder left-aligned in 32 bits, which is what
+                // libavcodec hands alacenc for an s32p frame; it shifts them back down itself.
+                planes![ch][i] = bytesPerSample == 2
+                    ? (short)(pending![p] | (pending[p + 1] << 8))
+                    : (pending![p] << 8) | (pending[p + 1] << 16) | (pending[p + 2] << 24);
+            }
+        }
+
+        ReadOnlySpan<byte> packet = encoder!.EncodeFrame(planes!, sampleCount);
+        await writer!.WriteSampleAsync(packet.ToArray(), sampleCount, cancellationToken);
+    }
+
+    public async Task FinalizeAsync(CancellationToken cancellationToken = default)
+    {
+        if (finalized) return;
+        if (!initialized || encoder == null || writer == null)
+            throw new InvalidOperationException("The ALAC encoder is not initialised.");
+
+        int bytesPerFrame = settings.Channels * (settings.BitsPerSample / 8);
+        if (pendingBytes > 0)
+        {
+            // A partial last frame is coded at its real length, which is what makes the file's
+            // sample count equal the input's rather than rounded up to a frame boundary.
+            await EncodeBufferedAsync(pendingBytes / bytesPerFrame, cancellationToken);
+            pendingBytes = 0;
+        }
+
+        await writer.FinishAsync(cancellationToken);
+        finalized = true;
     }
 
     public ValueTask DisposeAsync()
@@ -1165,6 +1332,7 @@ public static class AudioEncoderFactory
         {
             AudioFormat.Wav => new WavEncoder(),
             AudioFormat.Flac => new FlacEncoder(),
+            AudioFormat.Alac => new AlacEncoder(),
             AudioFormat.Mp3 => new Mp3Encoder(),
             AudioFormat.Opus => new OpusEncoder(),
             AudioFormat.Aac => new AacEncoder(),
